@@ -89,10 +89,15 @@ If you cannot determine with confidence, respond with type "unknown".`;
       temperature: 0,
     });
 
+    // Check if content exists
+    const content = response.choices[0].message.content;
+    if (!content) {
+      console.error('OpenAI response has no content');
+      return null;
+    }
+
     // Parse the response using Zod
-    const parsed = MediaParseSchema.safeParse(
-      JSON.parse(response.choices[0].message.content || '{}')
-    );
+    const parsed = MediaParseSchema.safeParse(JSON.parse(content));
 
     // Check if parsing failed
     if (!parsed.success) {
