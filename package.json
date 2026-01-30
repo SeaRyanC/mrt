@@ -1,0 +1,34 @@
+{
+  "name": "mrt",
+  "version": "1.0.0",
+  "description": "Media Renaming Tool - Automatically rename media files to follow Plex conventions",
+  "main": "dist/index.js",
+  "bin": {
+    "mrt": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "plex",
+    "media",
+    "rename",
+    "cli"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^14.0.2",
+    "openai": "^6.17.0",
+    "zod": "^4.3.6",
+    "zod-to-json-schema": "^3.25.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.1.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
