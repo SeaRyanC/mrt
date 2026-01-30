@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import { MediaInfo } from './parser';
 import path from 'path';
+import { z } from 'zod';
+import { zodResponseFormat } from 'openai/helpers/zod';
 
 /**
  * Validate API key format
@@ -8,6 +10,42 @@ import path from 'path';
 function validateApiKey(apiKey: string): boolean {
   return apiKey !== undefined && apiKey.length > 10;
 }
+
+/**
+ * Zod schema for TV show response
+ */
+const TVShowSchema = z.object({
+  type: z.literal('tv'),
+  title: z.string(),
+  season: z.number(),
+  episode: z.number(),
+  episodeTitle: z.string().optional(),
+});
+
+/**
+ * Zod schema for movie response
+ */
+const MovieSchema = z.object({
+  type: z.literal('movie'),
+  title: z.string(),
+  year: z.number().optional(),
+});
+
+/**
+ * Zod schema for unknown response
+ */
+const UnknownSchema = z.object({
+  type: z.literal('unknown'),
+});
+
+/**
+ * Combined schema for all response types
+ */
+const MediaParseSchema = z.discriminatedUnion('type', [
+  TVShowSchema,
+  MovieSchema,
+  UnknownSchema,
+]);
 
 /**
  * Use OpenAI to parse filename when static parsing fails
@@ -32,17 +70,7 @@ Please determine:
 3. For TV shows: What is the season number and episode number? What is the episode title if available?
 4. For movies: What is the release year if available?
 
-Respond in JSON format:
-{
-  "type": "tv" or "movie",
-  "title": "Title in Proper Case",
-  "season": number (TV only),
-  "episode": number (TV only),
-  "episodeTitle": "Episode Title" (TV only, optional),
-  "year": number (movie only, optional)
-}
-
-If you cannot determine with confidence, respond with {"type": "unknown"}`;
+If you cannot determine with confidence, respond with type "unknown".`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -57,19 +85,25 @@ If you cannot determine with confidence, respond with {"type": "unknown"}`;
           content: prompt,
         },
       ],
-      response_format: { type: 'json_object' },
+      response_format: zodResponseFormat(MediaParseSchema, 'media_parse'),
       temperature: 0,
     });
 
-    const result = JSON.parse(response.choices[0].message.content || '{}');
+    // Parse the response using Zod
+    const parsed = MediaParseSchema.safeParse(
+      JSON.parse(response.choices[0].message.content || '{}')
+    );
 
-    // Validate response structure
-    if (result.type === 'unknown' || !result.type) {
+    // Check if parsing failed
+    if (!parsed.success) {
+      console.error('Failed to parse OpenAI response:', parsed.error);
       return null;
     }
 
-    if (!result.title || typeof result.title !== 'string') {
-      console.error('OpenAI response missing or invalid title');
+    const result = parsed.data;
+
+    // Check if returned unknown
+    if (result.type === 'unknown') {
       return null;
     }
 
@@ -81,18 +115,11 @@ If you cannot determine with confidence, respond with {"type": "unknown"}`;
     };
 
     if (result.type === 'tv') {
-      // Validate TV show required fields
-      if (typeof result.season !== 'number' || typeof result.episode !== 'number') {
-        console.error('OpenAI response missing season/episode for TV show');
-        return null;
-      }
       mediaInfo.season = result.season;
       mediaInfo.episode = result.episode;
       mediaInfo.episodeTitle = result.episodeTitle;
     } else if (result.type === 'movie') {
-      if (result.year !== undefined) {
-        mediaInfo.year = result.year;
-      }
+      mediaInfo.year = result.year;
     }
 
     return mediaInfo;
