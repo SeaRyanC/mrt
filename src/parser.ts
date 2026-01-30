@@ -1,7 +1,7 @@
 import path from 'path';
 
 /**
- * Valid video file extensions
+ * Valid video file extensions (lowercase only - comparisons should use toLowerCase())
  */
 export const VALID_VIDEO_EXTENSIONS = ['.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.ts'];
 
