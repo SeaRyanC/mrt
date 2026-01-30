@@ -88,6 +88,14 @@ export async function runDryMode(options: DryModeOptions): Promise<void> {
       continue;
     }
     
+    // Validate TV show has required fields
+    if (mediaInfo.type === 'tv') {
+      if (mediaInfo.season === undefined || mediaInfo.episode === undefined) {
+        console.log('  → Invalid TV show data (missing season/episode), skipping');
+        continue;
+      }
+    }
+    
     // Generate new path based on the original file's directory
     const originalDir = path.dirname(file);
     const newPath = generateNewPath(mediaInfo, originalDir);

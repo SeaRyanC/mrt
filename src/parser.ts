@@ -49,7 +49,9 @@ export function parseFilename(filepath: string): MediaInfo | null {
   const yearMatch = nameWithoutExt.match(/^(.+?)[\s._-]+(\d{4})(?:[\s._-]|$)/);
   if (yearMatch) {
     const yearNum = parseInt(yearMatch[2], 10);
-    if (yearNum >= 1900 && yearNum <= 2100) {
+    const currentYear = new Date().getFullYear();
+    // Accept years from 1900 to 3 years in the future
+    if (yearNum >= 1900 && yearNum <= currentYear + 3) {
       return {
         type: 'movie',
         title: cleanTitle(yearMatch[1]),

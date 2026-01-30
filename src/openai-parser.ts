@@ -3,12 +3,23 @@ import { MediaInfo } from './parser';
 import path from 'path';
 
 /**
+ * Validate API key format
+ */
+function validateApiKey(apiKey: string): boolean {
+  return apiKey !== undefined && apiKey.length > 10;
+}
+
+/**
  * Use OpenAI to parse filename when static parsing fails
  */
 export async function parseFilenameWithAI(
   filepath: string,
   apiKey: string
 ): Promise<MediaInfo | null> {
+  if (!validateApiKey(apiKey)) {
+    throw new Error('Invalid OpenAI API key provided');
+  }
+
   const openai = new OpenAI({ apiKey });
   const basename = path.basename(filepath);
   const extension = path.extname(basename);
@@ -52,7 +63,13 @@ If you cannot determine with confidence, respond with {"type": "unknown"}`;
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
 
+    // Validate response structure
     if (result.type === 'unknown' || !result.type) {
+      return null;
+    }
+
+    if (!result.title || typeof result.title !== 'string') {
+      console.error('OpenAI response missing or invalid title');
       return null;
     }
 
@@ -64,16 +81,24 @@ If you cannot determine with confidence, respond with {"type": "unknown"}`;
     };
 
     if (result.type === 'tv') {
+      // Validate TV show required fields
+      if (typeof result.season !== 'number' || typeof result.episode !== 'number') {
+        console.error('OpenAI response missing season/episode for TV show');
+        return null;
+      }
       mediaInfo.season = result.season;
       mediaInfo.episode = result.episode;
       mediaInfo.episodeTitle = result.episodeTitle;
     } else if (result.type === 'movie') {
-      mediaInfo.year = result.year;
+      if (result.year !== undefined) {
+        mediaInfo.year = result.year;
+      }
     }
 
     return mediaInfo;
   } catch (error) {
-    console.error(`Error parsing filename with OpenAI: ${error}`);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`Error parsing filename with OpenAI: ${errorMsg}`);
     return null;
   }
 }

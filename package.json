@@ -10,7 +10,7 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No tests yet\" && exit 0"
   },
   "keywords": ["plex", "media", "rename", "cli"],
   "author": "",

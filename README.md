@@ -62,7 +62,7 @@ MovieName (Year)/MovieName (Year).ext
 
 ## Requirements
 
-- Node.js 14+
+- Node.js 20+
 - OpenAI API key (for dry mode)
 - Supported video formats: .mkv, .mp4, .avi, .mov, .wmv, .flv, .m4v, .ts
 

@@ -15,9 +15,14 @@ async function parseRenamesFile(filepath: string): Promise<Rename[]> {
   
   const renames: Rename[] = [];
   let currentFrom: string | null = null;
+  let lineNum = 0;
   
   for (const line of lines) {
+    lineNum++;
     if (line.startsWith('-')) {
+      if (currentFrom !== null) {
+        console.warn(`Warning: Line ${lineNum}: Found consecutive '-' lines without '+' line`);
+      }
       currentFrom = line.slice(1);
     } else if (line.startsWith('+')) {
       if (currentFrom) {
@@ -26,8 +31,16 @@ async function parseRenamesFile(filepath: string): Promise<Rename[]> {
           to: line.slice(1),
         });
         currentFrom = null;
+      } else {
+        console.warn(`Warning: Line ${lineNum}: Found '+' line without preceding '-' line`);
       }
+    } else {
+      console.warn(`Warning: Line ${lineNum}: Invalid line format (should start with '-' or '+')`);
     }
+  }
+  
+  if (currentFrom !== null) {
+    console.warn(`Warning: Found '-' line at end of file without matching '+' line`);
   }
   
   return renames;
@@ -40,7 +53,13 @@ async function ensureDir(dirPath: string): Promise<void> {
   try {
     await fs.mkdir(dirPath, { recursive: true });
   } catch (error) {
-    // Ignore if directory already exists
+    const err = error as NodeJS.ErrnoException;
+    // Only ignore EEXIST errors
+    if (err.code !== 'EEXIST') {
+      const errorMsg = err.message || String(error);
+      console.warn(`Warning: Could not create directory ${dirPath}: ${errorMsg}`);
+      throw error;
+    }
   }
 }
 
@@ -86,7 +105,8 @@ export async function runWetMode(renamesFile: string): Promise<void> {
       console.log(`  ✓ Success`);
       successCount++;
     } catch (error) {
-      console.log(`  ✗ Error: ${error}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.log(`  ✗ Error: ${errorMsg}`);
       errorCount++;
     }
   }
