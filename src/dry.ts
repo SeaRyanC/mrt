@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { parseFilename, generateNewPath, MediaInfo } from './parser';
+import { parseFilename, generateNewPath, MediaInfo, VALID_VIDEO_EXTENSIONS } from './parser';
 import { parseFilenameWithAI } from './openai-parser';
 
 interface DryModeOptions {
@@ -26,7 +26,7 @@ async function enumerateFiles(dirPath: string): Promise<string[]> {
       } else if (entry.isFile()) {
         // Only include video files
         const ext = path.extname(entry.name).toLowerCase();
-        if (['.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.ts'].includes(ext)) {
+        if (VALID_VIDEO_EXTENSIONS.includes(ext)) {
           files.push(fullPath);
         }
       }

@@ -1,5 +1,10 @@
 import path from 'path';
 
+/**
+ * Valid video file extensions (lowercase only - comparisons should use toLowerCase())
+ */
+export const VALID_VIDEO_EXTENSIONS = ['.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.ts'];
+
 export interface MediaInfo {
   type: 'tv' | 'movie';
   title: string;
@@ -16,8 +21,11 @@ export interface MediaInfo {
  */
 export function parseFilename(filepath: string): MediaInfo | null {
   const basename = path.basename(filepath);
-  const extension = path.extname(basename);
-  const nameWithoutExt = basename.slice(0, -extension.length);
+  const rawExtension = path.extname(basename);
+  // Only treat it as a file extension if it's a valid video extension
+  // Otherwise, treat the path as a folder (no extension)
+  const extension = VALID_VIDEO_EXTENSIONS.includes(rawExtension.toLowerCase()) ? rawExtension : '';
+  const nameWithoutExt = extension ? basename.slice(0, -extension.length) : basename;
 
   // Try to parse TV show format
   const tvMatch = nameWithoutExt.match(/^(.+?)[\s._-]*[Ss](\d{1,2})[Ee](\d{1,2})(?:[\s._-]*(.+?))?(?:[\s._-]*(AMZN|WebRIP|WEBRip|BluRay|HDTV|1080p|720p|480p).*)?$/i);

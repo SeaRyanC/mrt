@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { MediaInfo } from './parser';
+import { MediaInfo, VALID_VIDEO_EXTENSIONS } from './parser';
 import path from 'path';
 import { z } from 'zod';
 import { zodResponseFormat } from 'openai/helpers/zod';
@@ -60,7 +60,9 @@ export async function parseFilenameWithAI(
 
   const openai = new OpenAI({ apiKey });
   const basename = path.basename(filepath);
-  const extension = path.extname(basename);
+  const rawExtension = path.extname(basename);
+  // Only treat it as a file extension if it's a valid video extension
+  const extension = VALID_VIDEO_EXTENSIONS.includes(rawExtension.toLowerCase()) ? rawExtension : '';
 
   const prompt = `Analyze this media filename and extract structured information: "${basename}"
 
