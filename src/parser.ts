@@ -87,6 +87,114 @@ function cleanTitle(title: string): string {
 }
 
 /**
+ * Parse media info from folder context when filename parsing fails.
+ * This handles cases like:
+ * - /media/Movie Name (2021)/movie.mkv -> extracts "Movie Name" and year 2021
+ * - /media/Show Name/Season 01/episode.mkv -> extracts "Show Name" and season 1
+ * - /media/Show Name/Season 01/S01E03.mkv -> extracts show name from folder, episode from filename
+ */
+export function parseFromFolderContext(filepath: string): MediaInfo | null {
+  const basename = path.basename(filepath);
+  const rawExtension = path.extname(basename);
+  const extension = VALID_VIDEO_EXTENSIONS.includes(rawExtension.toLowerCase()) ? rawExtension : '';
+  const nameWithoutExt = extension ? basename.slice(0, -extension.length) : basename;
+  const parts = filepath.split(path.sep);
+  
+  // Try to extract episode info from filename (S01E01 format without show name)
+  const episodeOnlyMatch = nameWithoutExt.match(/^[Ss](\d{1,2})[Ee](\d{1,2})(?:[\s._-]*(.+?))?(?:[\s._-]*(AMZN|WebRIP|WEBRip|BluRay|HDTV|1080p|720p|480p).*)?$/i);
+  
+  // Look for Season XX folder pattern
+  for (let i = parts.length - 2; i >= 0; i--) {
+    const part = parts[i];
+    const seasonMatch = part.match(/^Season\s+(\d+)$/i);
+    
+    if (seasonMatch) {
+      // Found a season folder, look for show name in parent
+      const seasonNum = parseInt(seasonMatch[1], 10);
+      
+      if (i > 0) {
+        const showFolder = parts[i - 1];
+        // The show folder should just be the show name (not a Season folder)
+        if (!/^Season\s+\d+$/i.test(showFolder)) {
+          // Check if we can extract episode number from filename
+          if (episodeOnlyMatch) {
+            return {
+              type: 'tv',
+              title: showFolder,
+              season: parseInt(episodeOnlyMatch[1], 10),
+              episode: parseInt(episodeOnlyMatch[2], 10),
+              episodeTitle: episodeOnlyMatch[3] ? cleanTitle(episodeOnlyMatch[3]) : undefined,
+              extension,
+              originalPath: filepath,
+            };
+          }
+          
+          // Try to extract episode number from filename in other formats
+          const simpleEpMatch = nameWithoutExt.match(/(?:^|[\s._-])(?:e|ep|episode)?\s*(\d{1,2})(?:[\s._-]|$)/i);
+          if (simpleEpMatch) {
+            return {
+              type: 'tv',
+              title: showFolder,
+              season: seasonNum,
+              episode: parseInt(simpleEpMatch[1], 10),
+              extension,
+              originalPath: filepath,
+            };
+          }
+          
+          // If we can't determine episode, we can't generate a proper TV filename
+          // Return null so it can fall through to AI parsing
+          return null;
+        }
+      }
+    }
+  }
+  
+  // Look for movie folder pattern: "Movie Name (Year)" or just "Movie Name"
+  for (let i = parts.length - 2; i >= 0; i--) {
+    const part = parts[i];
+    
+    // Try to match "Movie Name (Year)" format
+    const movieYearMatch = part.match(/^(.+?)\s*\((\d{4})\)$/);
+    if (movieYearMatch) {
+      const yearNum = parseInt(movieYearMatch[2], 10);
+      const currentYear = new Date().getFullYear();
+      if (yearNum >= 1900 && yearNum <= currentYear + 3) {
+        return {
+          type: 'movie',
+          title: movieYearMatch[1].trim(),
+          year: yearNum,
+          extension,
+          originalPath: filepath,
+        };
+      }
+    }
+    
+    // Don't match generic folder names that are likely not movie titles
+    // Skip if it looks like a Season folder or other structural folder
+    if (/^Season\s+\d+$/i.test(part)) continue;
+    
+    // If folder has year at end without parentheses, try to extract it
+    const folderYearMatch = part.match(/^(.+?)[\s._-]+(\d{4})$/);
+    if (folderYearMatch) {
+      const yearNum = parseInt(folderYearMatch[2], 10);
+      const currentYear = new Date().getFullYear();
+      if (yearNum >= 1900 && yearNum <= currentYear + 3) {
+        return {
+          type: 'movie',
+          title: cleanTitle(folderYearMatch[1]),
+          year: yearNum,
+          extension,
+          originalPath: filepath,
+        };
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Generate Plex-compliant filename for TV show
  */
 export function generateTVFilename(info: MediaInfo): string {
@@ -134,10 +242,30 @@ function normalizeForComparison(str: string): string {
 }
 
 /**
+ * Strip trailing year from a string (both "(Year)" and "Year" formats)
+ */
+function stripTrailingYear(str: string): string {
+  return str
+    .replace(/\s*\(\d{4}\)\s*$/, '')  // Strip "(2021)" format
+    .replace(/\s+\d{4}\s*$/, '')       // Strip "2021" format
+    .trim();
+}
+
+/**
  * Check if two strings are similar (case-insensitive, ignoring separators)
+ * Also considers strings similar if they match when trailing years are stripped
  */
 function isSimilar(a: string, b: string): boolean {
-  return normalizeForComparison(a) === normalizeForComparison(b);
+  const aNorm = normalizeForComparison(a);
+  const bNorm = normalizeForComparison(b);
+  
+  if (aNorm === bNorm) return true;
+  
+  // Also check if they match when years are stripped
+  const aStripped = normalizeForComparison(stripTrailingYear(a));
+  const bStripped = normalizeForComparison(stripTrailingYear(b));
+  
+  return aStripped === bStripped;
 }
 
 /**

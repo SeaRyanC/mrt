@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { parseFilename, generateNewPath, MediaInfo, VALID_VIDEO_EXTENSIONS } from './parser';
+import { parseFilename, parseFromFolderContext, generateNewPath, MediaInfo, VALID_VIDEO_EXTENSIONS } from './parser';
 import { parseFilenameWithAI } from './openai-parser';
 
 interface DryModeOptions {
@@ -164,9 +164,15 @@ export async function runDryMode(options: DryModeOptions): Promise<void> {
     // Try static parsing first
     let mediaInfo: MediaInfo | null = parseFilename(file);
     
-    // If static parsing fails, use OpenAI
+    // If static parsing fails, try to extract info from folder context
     if (!mediaInfo) {
-      console.log('  → Static parsing failed, using OpenAI...');
+      console.log('  → Static parsing failed, trying folder context...');
+      mediaInfo = parseFromFolderContext(file);
+    }
+    
+    // If folder context fails, use OpenAI
+    if (!mediaInfo) {
+      console.log('  → Folder context failed, using OpenAI...');
       mediaInfo = await parseFilenameWithAI(file, options.apiKey);
     }
     
