@@ -127,6 +127,106 @@ export function generateMovieFilename(info: MediaInfo): string {
 }
 
 /**
+ * Normalize a string for case-insensitive comparison
+ */
+function normalizeForComparison(str: string): string {
+  return str.toLowerCase().replace(/[\s._-]+/g, ' ').trim();
+}
+
+/**
+ * Check if two strings are similar (case-insensitive, ignoring separators)
+ */
+function isSimilar(a: string, b: string): boolean {
+  return normalizeForComparison(a) === normalizeForComparison(b);
+}
+
+/**
+ * Detect if a path is already in a proper media folder structure and find the root
+ * Returns the "media root" path where Show/Movie folders should be placed
+ */
+export function findMediaRoot(originalDir: string, info: MediaInfo): string {
+  const parts = originalDir.split(path.sep);
+  
+  if (info.type === 'tv') {
+    // For TV shows, look for ShowName/Season XX pattern
+    // Walk backwards to find if we're already in a show folder
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i];
+      
+      // Check if this is a "Season XX" folder
+      if (/^Season\s+\d+$/i.test(part)) {
+        // Check if the parent folder is the show name
+        if (i > 0 && isSimilar(parts[i - 1], info.title)) {
+          // Return the grandparent as the media root
+          const rootParts = parts.slice(0, i - 1);
+          return rootParts.length > 0 ? rootParts.join(path.sep) : parts[0];
+        }
+      }
+      
+      // Check if this folder matches the show name (we might be in ShowName directly)
+      if (isSimilar(part, info.title)) {
+        // Return the parent as the media root
+        const rootParts = parts.slice(0, i);
+        return rootParts.length > 0 ? rootParts.join(path.sep) : parts[0];
+      }
+    }
+  } else if (info.type === 'movie') {
+    // For movies, look for "MovieName (Year)" pattern
+    const movieFolder = info.year ? `${info.title} (${info.year})` : info.title;
+    
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i];
+      
+      // Check if this folder matches the movie folder name
+      if (isSimilar(part, movieFolder) || isSimilar(part, info.title)) {
+        // Return the parent as the media root
+        const rootParts = parts.slice(0, i);
+        return rootParts.length > 0 ? rootParts.join(path.sep) : parts[0];
+      }
+    }
+  }
+  
+  // No existing structure found, use the original directory
+  return originalDir;
+}
+
+/**
+ * Detect and fix double-nested folder paths
+ * e.g., "Show/Show/Season 01" -> "Show/Season 01"
+ */
+export function fixDoubleNesting(filePath: string): string {
+  const parts = filePath.split(path.sep);
+  const result: string[] = [];
+  
+  for (let i = 0; i < parts.length; i++) {
+    const currentPart = parts[i];
+    
+    // Check for consecutive duplicate folder names (double nesting)
+    if (i > 0 && isSimilar(parts[i - 1], currentPart)) {
+      // Skip this duplicate folder
+      continue;
+    }
+    
+    // Check for pattern like "Show/Show Name/Season" where Show is contained in Show Name
+    // or "Show Name/Show Name (Year)" patterns
+    if (i > 0) {
+      const prevPart = parts[i - 1];
+      // If previous part is a prefix of current part (ignoring case and year suffixes)
+      const prevNorm = normalizeForComparison(prevPart);
+      const currNorm = normalizeForComparison(currentPart.replace(/\s*\(\d{4}\)\s*$/, ''));
+      if (prevNorm === currNorm) {
+        // Remove the previous entry and add the current (more complete) one
+        result.pop();
+      }
+    }
+    
+    result.push(currentPart);
+  }
+  
+  return result.join(path.sep);
+}
+
+/**
  * Generate the new path based on media info
  */
 export function generateNewPath(info: MediaInfo, basePath: string): string {
@@ -134,5 +234,10 @@ export function generateNewPath(info: MediaInfo, basePath: string): string {
     ? generateTVFilename(info)
     : generateMovieFilename(info);
   
-  return path.join(basePath, relativeNewPath);
+  // Find the appropriate media root (avoiding double-nesting)
+  const mediaRoot = findMediaRoot(basePath, info);
+  const fullPath = path.join(mediaRoot, relativeNewPath);
+  
+  // Fix any remaining double-nesting issues
+  return fixDoubleNesting(fullPath);
 }

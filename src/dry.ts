@@ -10,6 +10,16 @@ interface DryModeOptions {
 }
 
 /**
+ * Common associated file extensions that should "go along for the ride"
+ */
+const ASSOCIATED_FILE_EXTENSIONS = [
+  '.srt', '.sub', '.idx', '.ass', '.ssa', '.vtt',  // Subtitles
+  '.nfo',                                           // Info files
+  '.jpg', '.jpeg', '.png', '.tbn',                  // Images/thumbnails
+  '.txt',                                           // Text files
+];
+
+/**
  * Get list of files from filesystem
  */
 async function enumerateFiles(dirPath: string): Promise<string[]> {
@@ -47,6 +57,83 @@ async function readFileList(listPath: string): Promise<string[]> {
     .map(line => line.trim())
     .filter(line => line.length > 0)
     .map(line => line.replace(/\\/g, '/')); // Normalize to forward slashes
+}
+
+/**
+ * Find associated files for a given media file
+ * These are files in the same directory with the same base name but different extensions
+ */
+async function findAssociatedFiles(mediaFilePath: string): Promise<string[]> {
+  const dir = path.dirname(mediaFilePath);
+  const mediaBasename = path.basename(mediaFilePath);
+  const mediaExt = path.extname(mediaBasename).toLowerCase();
+  const mediaNameWithoutExt = mediaBasename.slice(0, -mediaExt.length);
+  
+  const associatedFiles: string[] = [];
+  
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      
+      const ext = path.extname(entry.name).toLowerCase();
+      
+      // Skip if it's a video file (those are handled separately)
+      if (VALID_VIDEO_EXTENSIONS.includes(ext)) continue;
+      
+      // Skip if it's not an associated file type we care about
+      if (!ASSOCIATED_FILE_EXTENSIONS.includes(ext)) continue;
+      
+      const entryNameWithoutExt = entry.name.slice(0, -ext.length);
+      
+      // Check if the base name matches or starts with the media file's base name
+      // This handles cases like "movie.srt", "movie.en.srt", "movie-poster.jpg"
+      if (entryNameWithoutExt === mediaNameWithoutExt || 
+          entryNameWithoutExt.startsWith(mediaNameWithoutExt + '.') ||
+          entryNameWithoutExt.startsWith(mediaNameWithoutExt + '-')) {
+        associatedFiles.push(path.join(dir, entry.name));
+      }
+    }
+  } catch {
+    // Directory read failures can occur for missing directories or permission issues
+    // when using --list mode with paths that no longer exist - gracefully return empty
+  }
+  
+  return associatedFiles;
+}
+
+/**
+ * Generate new path for an associated file based on the primary file's rename
+ */
+function generateAssociatedFilePath(
+  associatedFile: string, 
+  originalMediaFile: string, 
+  newMediaPath: string
+): string {
+  const originalDir = path.dirname(originalMediaFile);
+  const newDir = path.dirname(newMediaPath);
+  
+  const originalMediaBasename = path.basename(originalMediaFile);
+  const originalMediaExt = path.extname(originalMediaBasename);
+  const originalMediaName = originalMediaBasename.slice(0, -originalMediaExt.length);
+  
+  const newMediaBasename = path.basename(newMediaPath);
+  const newMediaExt = path.extname(newMediaBasename);
+  const newMediaName = newMediaBasename.slice(0, -newMediaExt.length);
+  
+  const associatedBasename = path.basename(associatedFile);
+  
+  // Replace the original media name prefix with the new media name
+  let newAssociatedName: string;
+  if (associatedBasename.startsWith(originalMediaName)) {
+    newAssociatedName = newMediaName + associatedBasename.slice(originalMediaName.length);
+  } else {
+    // Fallback: just use the original associated filename
+    newAssociatedName = associatedBasename;
+  }
+  
+  return path.join(newDir, newAssociatedName);
 }
 
 /**
@@ -112,6 +199,17 @@ export async function runDryMode(options: DryModeOptions): Promise<void> {
       from: file,
       to: newPath,
     });
+    
+    // Find and include associated files
+    const associatedFiles = await findAssociatedFiles(file);
+    for (const associatedFile of associatedFiles) {
+      const newAssociatedPath = generateAssociatedFilePath(associatedFile, file, newPath);
+      console.log(`  → Associated file: ${path.basename(associatedFile)} → ${path.basename(newAssociatedPath)}`);
+      renames.push({
+        from: associatedFile,
+        to: newAssociatedPath,
+      });
+    }
   }
   
   // Write renames.txt
